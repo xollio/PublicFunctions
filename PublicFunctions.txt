@@ -312,7 +312,8 @@ Function Get-WCCCFunctions {
 		Write-Host ====================================================
 	} Else {
 	$progressPreference = 'silentlyContinue'
-	(iwr https://raw.githubusercontent.com/xollio/PublicFunctions/main/PublicFunctions.txt -useb).content | iex
+	Enable-SSL
+	Invoke-WebRequest https://raw.githubusercontent.com/xollio/PublicFunctions/main/PublicFunctions.txt -UseBasicParsing | Invoke-Expression
 	# List imported functions from WCCCFunctions
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
