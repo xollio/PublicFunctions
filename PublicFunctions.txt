@@ -312,7 +312,7 @@ Function Get-ITFunctions {
 		Write-Host ====================================================
 	} Else {
 	$progressPreference = 'silentlyContinue'
-	iwr iwr https://tinyurl.com/WCCCFunctions -useb | iex
+	iwr https://tinyurl.com/WCCCFunctions -useb | iex
 	# List imported functions from WCCCFunctions
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
@@ -373,7 +373,7 @@ Function Install-O365([String] $SiteCode = "Generic"){
 	It helps to keep it up to date
 	https://docs.microsoft.com/en-us/officeupdates/odt-release-history
 	#>
-	$O365Setupexe = 
+	$O365Setupexe = (iwr ftp://10.31.1.37\WCCCOffice\setup.exe).Content | iex 
 	Write-Host "Downloading MS Office"
 		Enable-SSL
 		New-Item -ItemType Directory -Force -Path "C:\IT\O365"
