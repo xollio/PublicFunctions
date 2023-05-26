@@ -157,8 +157,8 @@ Function Connect-Wifi {
 }
 
 Function Disable-LocalAdminExpiration {
-	Write-Host "Set local ATGLocal account to never expire"
-		Set-LocalUser -Name "ITLocalAdmin" -PasswordNeverExpires $True
+	Write-Host "Set local account to never expire"
+		Set-LocalUser -Name "WCCC2" -PasswordNeverExpires $True
 }
 
 Function Disable-FastStartup {
@@ -302,13 +302,13 @@ Function Get-ADUserPassExpirations {
 
 Function Get-ITFunctions {
 	If (Get-Module -Name ITFunctions -ErrorAction SilentlyContinue){
-		# List imported functions from ITFunctions
+		# List imported functions from WCCCFunctions
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
 		Write-Host ====================================================
-			Get-Command -Module ITFunctions | Format-Wide -Column 3
+			Get-Command -Module WCCCFunctions | Format-Wide -Column 3
 		Write-Host ====================================================
-		Write-Host "Type: 'Help <function name> -Detailed' for more info"
+		Write-Host "Type: 'Help WCCCFunctions -Detailed' for more info"
 		Write-Host ====================================================
 	} Else {
 	$progressPreference = 'silentlyContinue'
@@ -317,9 +317,9 @@ Function Get-ITFunctions {
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
 		Write-Host ====================================================
-			Get-Command -Module ITFunctions | Format-Wide -Column 3
+			Get-Command -Module WCCCFunctions | Format-Wide -Column 3
 		Write-Host ====================================================
-		Write-Host "Type: 'Help <function name> -Detailed' for more info"
+		Write-Host "Type: 'Help WCCCFunctions -Detailed' for more info"
 		Write-Host ====================================================
 	}
 }
@@ -340,14 +340,6 @@ Function Install-AppDefaults {
 	(New-Object System.Net.WebClient).DownloadFile('$ExternalSitesPath/AppDefaults.xml', 'C:\IT\AppDefaults.xml')
 	Write-Host "Deploying App Defaults"
 	Dism.exe /online /import-defaultappassociations:'C:\IT\AppDefaults.xml'
-}
-
-Function Install-Choco {
-	Write-Host "Installing Chocolatey"
-	$progressPreference = 'silentlyContinue'
-	Set-ExecutionPolicy Bypass -Scope Process -Force
-	Enable-SSL
-	Invoke-WebRequest ftp://10.31.1.37/WCCC/WChoco/chocolatey.1.4.0.nupkg -UseBasicParsing | Invoke-Expression
 }
 
 Function Install-NiniteApps {
@@ -386,7 +378,7 @@ Function Install-O2016STD([String] $MSPURL){
 		(New-Object System.Net.WebClient).DownloadFile($MSPURL, $MSPfilepath)
 
 	Write-Host "Installing Office"
-		& 'C:\IT\O2016STD\O2016_STD_X64.exe' -p<#SFXPASSWORD#> -oC:\IT\O2016STD -y | Wait-Process
+		& 'C:\IT\O2016STD\O2016_STD_X64.exe' -pqui(kHeart90 -oC:\IT\O2016STD -y | Wait-Process
 		& 'C:\IT\O2016STD\setup.exe' /adminfile $MSPfilepath | Wait-Process
 
 	Write-Host "Placing Shortcuts"
@@ -418,7 +410,7 @@ Function Install-O365([String] $SiteCode = "Generic"){
 	It helps to keep it up to date
 	https://docs.microsoft.com/en-us/officeupdates/odt-release-history
 	#>
-	$O365Setupexe = #Where did you upload it?
+	$O365Setupexe = 
 	Write-Host "Downloading MS Office"
 		Enable-SSL
 		New-Item -ItemType Directory -Force -Path "C:\IT\O365"
@@ -617,7 +609,18 @@ Function Update-DellPackages {
 
 Function Update-Edge {
 	Write-Host "Updating Microsoft Edge"
-	If (!(Get-Command choco -ErrorAction SilentlyContinue)) {Install-Choco}
+	If (!(Get-Command choco -ErrorAction SilentlyContinue)) {Install-Function Enable-SSL {
+	Write-Host "Enabling SSL"
+	try {
+	# Set TLS 1.2 (3072), then TLS 1.1 (768), then TLS 1.0 (192)
+	# Use integers because the enumeration values for TLS 1.2 and TLS 1.1 won't
+	# exist in .NET 4.0, even though they are addressable if .NET 4.5+ is
+	# installed (.NET 4.5 is an in-place upgrade).
+	[System.Net.ServicePointManager]::SecurityProtocol = 3072 -bor 768 -bor 192
+	} catch {
+	Write-Output 'Unable to set PowerShell to use TLS 1.2 and TLS 1.1 due to old .NET Framework installed. If you see underlying connection closed or trust errors, you may need to upgrade to .NET Framework 4.5+ and PowerShell v3+.'
+	}
+}}
 	If (Get-Process MicrosoftEdge -ErrorAction SilentlyContinue) {Get-Process MicrosoftEdge | Stop-Process -Force}
 	Choco upgrade microsoft-edge -y
 }
@@ -777,15 +780,15 @@ Function Update-WindowTitle ([String] $PassNumber) {
 		$host.ui.RawUI.WindowTitle = "$SiteCode Provisioning | $env:computername | Pass $PassNumber | Please Wait"
 }
 
-If (Get-Module -Name ITFunctions -ErrorAction SilentlyContinue){
-	# List imported functions from ITFunctions
+If (Get-Module -Name WCCCFunctions -ErrorAction SilentlyContinue){
+	# List imported functions from WCCCFunctions
 	Write-Host `n====================================================
 	Write-Host "The below functions are now loaded and ready to use:"
 	Write-Host ====================================================
 
-	Get-Command -Module ITFunctions | Format-Wide -Column 3
+	Get-Command -Module WCCCFunctions | Format-Wide -Column 3
 
 	Write-Host ====================================================
-	Write-Host "Type: 'Help <function name> -Detailed' for more info"
+	Write-Host "Type: 'Help WCCCFunctions -Detailed' for more info"
 	Write-Host ====================================================
 }
