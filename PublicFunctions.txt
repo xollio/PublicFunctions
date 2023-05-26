@@ -1,0 +1,791 @@
+Function Add-IEShortcut{
+	param
+	(
+		[string]$Label,
+		[string]$Url
+	)
+
+	$TargetFile = "C:\Program Files\Internet Explorer\iexplore.exe"
+	$ShortcutFile = "$env:Public\Desktop\" + $Label + ".lnk"
+	$WScriptShell = New-Object -ComObject WScript.Shell
+	$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+	$Shortcut.TargetPath = $TargetFile
+	$Shortcut.Arguments = $Url
+	$Shortcut.Save()
+}
+
+Function Add-WebShortcut{
+	param
+	(
+		[string]$Label,
+		[string]$Url
+	)
+
+	Write-Host "Adding a shortcut to $Label to the desktop"
+	$Shell = New-Object -ComObject ("WScript.Shell")
+	$URLFilePath = $env:Public + "\Desktop\" + $Label + ".url"
+	$Favorite = $Shell.CreateShortcut($URLFilePath)
+	$Favorite.TargetPath = $Url
+	$Favorite.Save()
+}
+
+Function Backup-LastUser {
+	$RegKey = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+	$RegFile = "C:\IT\LastLoggedOnUser.reg"
+	Write-Host "Backuping up last logged on user"
+	reg export $RegKey $RegFile /y
+	Write-Host "Trimming export"
+		(Get-Content $RegFile)[0..10] | Out-File -FilePath $RegFile -Force
+	$NewReg = $RegFile[0..8]
+	$User = (Select-String -Path $RegFile -Pattern '"LastLoggedOnUser"' -SimpleMatch).Line
+	Write-Host "$User has been backed up to $RegFile"
+	Write-Host "`nTry the command Restore-LastUser"
+}
+
+Function Connect-O365 {
+	If ($PSVersionTable.PSEdition -like "Desktop") {
+		Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+		Install-Module -Name ExchangeOnlineManagement -AllowClobber -Force
+		Connect-ExchangeOnline -ShowProgress $true
+
+		Write-Host -ForegroundColor Green -BackgroundColor DarkRed @"
+		Be sure to disconnect the remote PowerShell session when you're finished.
+		If you close the Windows PowerShell window without disconnecting the session,
+		you could use up all the remote PowerShell sessions available to you,
+		and you'll need to wait for the sessions to expire.
+		To disconnect the remote PowerShell session, run the following command.
+
+		Disconnect-ExchangeOnline
+"@
+	} Else {
+		Write-Host -ForegroundColor Green -BackgroundColor DarkRed "Warning! You are using a CORE edition of Powershell. MFA will be unavailable."
+		$UserCredential = Get-Credential
+		$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $UserCredential -Authentication Basic -AllowRedirection
+		Import-PSSession $Session
+
+		Write-Host -ForegroundColor Green -BackgroundColor DarkRed @"
+		Be sure to disconnect the remote PowerShell session when you're finished.
+		If you close the Windows PowerShell window without disconnecting the session,
+		you could use up all the remote PowerShell sessions available to you,
+		and you'll need to wait for the sessions to expire.
+		To disconnect the remote PowerShell session, run the following command.
+
+		Get-PSSession | Remove-PSSession
+"@
+	}
+
+<#
+	.DESCRIPTION
+		Initiates an Office 365 Exchange connection that is compatible with MFA.
+		This is not compatible with Powershell Core.
+
+	.LINK
+		https://docs.microsoft.com/en-us/powershell/exchange/connect-to-exchange-online-powershell?view=exchange-ps
+
+	.EXAMPLE
+		Connect-O365
+		Yup, that's it!
+#>
+}
+
+Function Connect-Wifi {
+	param
+		(
+			[Parameter(Mandatory=$False)]
+			[string]$NetworkSSID,
+
+			[Parameter(Mandatory=$true)]
+			[string]$NetworkPassword,
+
+			[ValidateSet('WEP','WPA','WPA2','WPA2PSK')]
+			[Parameter(Mandatory=$False)]
+			[string]$Authentication = 'WPA2PSK',
+
+			[ValidateSet('AES','TKIP')]
+			[Parameter(Mandatory=$False)]
+			[string]$Encryption = 'AES'
+		)
+
+	# Create the WiFi profile, set the profile to auto connect
+	$WirelessProfile = @'
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+	<name>{0}</name>
+	<SSIDConfig>
+		<SSID>
+			<name>{0}</name>
+		</SSID>
+		<nonBroadcast>true</nonBroadcast>
+	</SSIDConfig>
+	<connectionType>ESS</connectionType>
+	<connectionMode>auto</connectionMode>
+	<MSM>
+		<security>
+			<authEncryption>
+				<authentication>{2}</authentication>
+				<encryption>{3}</encryption>
+				<useOneX>false</useOneX>
+			</authEncryption>
+			<sharedKey>
+				<keyType>passPhrase</keyType>
+				<protected>false</protected>
+				<keyMaterial>{1}</keyMaterial>
+			</sharedKey>
+		</security>
+	</MSM>
+</WLANProfile>
+'@ -f $NetworkSSID, $NetworkPassword, $Authentication, $Encryption
+
+	# Create the XML file locally
+	$random = Get-Random -Minimum 1111 -Maximum 99999999
+	$tempProfileXML = "$env:TEMP\tempProfile$random.xml"
+	$WirelessProfile | Out-File $tempProfileXML
+
+	# Add the WiFi profile and connect
+	Start-Process netsh ('wlan add profile filename={0}' -f $tempProfileXML)
+
+	# Connect to the WiFi network - only if you need to
+	$WifiNetworks = (netsh wlan show network)
+	$NetworkSSIDSearch = '*' + $NetworkSSID + '*'
+	If ($WifiNetworks -like $NetworkSSIDSearch) {
+		Write-Host "Found SSID: $NetworkSSID `nAttempting to connect"
+		Start-Process netsh ('wlan connect name="{0}"' -f $NetworkSSID)
+		Start-Sleep 5
+		netsh interface show interface
+	} Else {
+		Write-Host "Did not find SSID: $NetworkSSID `nConnection profile stored for later use."
+	}
+}
+
+Function Disable-LocalAdminExpiration {
+	Write-Host "Set local ATGLocal account to never expire"
+		Set-LocalUser -Name "ITLocalAdmin" -PasswordNeverExpires $True
+}
+
+Function Disable-FastStartup {
+	Write-Host "Disable Windows Fast Startup"
+		REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Power" /v HiberbootEnabled /t REG_DWORD /d "0" /f
+		powercfg -h off
+}
+
+Function Disable-Sleep {
+<#
+.Synopsis
+   Function to suspend your current Power Plan settings when running a PowerShell script.
+.DESCRIPTION
+   Function to suspend your current Power Plan settings when running a PowerShell script.
+   Scenario: When downloading files using Robocopy from PowerShell you don't want your
+   laptop to go into sleep mode.
+.EXAMPLE
+   Disable-Sleep -option Display -Verbose
+   Run mylongrunningscript with Display idle timeout prevented and verbose messages
+.LINK
+  http://www.microsofttranslator.com/bv.aspx?from=ru&to=en&a=http%3A%2F%2Fsocial.technet.microsoft.com%2FForums%2Fen-US%2F1f4754cb-37bf-4e1d-a59f-ec0f1aaf9d1c%2Fsetthreadexecutionstate-powershell%3FThread%3A1f4754cb-37bf-4e1d-a59f-ec0f1aaf9d1c%3DMicrosoft.Forums.Data.Models.Discussion%26ThreadViewModel%3A1f4754cb-37bf-4e1d-a59f-ec0f1aaf9d1c%3DMicrosoft.Forums.CachedViewModels.ThreadPageViewModel%26forum%3Dscrlangru
+#>
+[CmdletBinding()]
+    [Alias()]
+    [OutputType([int])]
+    Param
+    (
+        # Param1 help description
+        #[Parameter(Mandatory=$true,
+        #           Position=0)]
+        #$script,
+        [ValidateSet("Away","Display","System")]
+        [string]$option = "Display"
+
+    )
+
+    $code=@'
+[DllImport("kernel32.dll", CharSet = CharSet.Auto,SetLastError = true)]
+  public static extern void SetThreadExecutionState(uint esFlags);
+'@
+
+    $ste = Add-Type -memberDefinition $code -name System -namespace Win32 -passThru
+    $ES_CONTINUOUS = [uint32]"0x80000000" #Requests that the other EXECUTION_STATE flags set remain in effect until SetThreadExecutionState is called again with the ES_CONTINUOUS flag set and one of the other EXECUTION_STATE flags cleared.
+    $ES_AWAYMODE_REQUIRED = [uint32]"0x00000040" #Requests Away Mode to be enabled.
+    $ES_DISPLAY_REQUIRED = [uint32]"0x00000002" #Requests display availability (display idle timeout is prevented).
+    $ES_SYSTEM_REQUIRED = [uint32]"0x00000001" #Requests system availability (sleep idle timeout is prevented).
+
+    Switch ($option)
+    {
+      "Away" {$setting = $ES_AWAYMODE_REQUIRED}
+      "Display" {$setting = $ES_DISPLAY_REQUIRED}
+      "System" {$setting = $ES_SYSTEM_REQUIRED}
+      Default {$setting = $ES_SYSTEM_REQUIRED}
+
+    }
+
+    Write-Host "Power Plan suspended with option: $option"
+
+    $ste::SetThreadExecutionState($ES_CONTINUOUS -bor $setting)
+	Write-Host "`nComputer sleep has been temporarily disabled. Use the command 'Enable-Sleep' when done."
+}
+
+Function Disconnect-AllUsers {
+<#
+	.DESCRIPTION
+		Logs off all users from a machine.
+#>
+	(quser) -replace ">"," " -replace "\s+","," -replace "IDLE,TIME","IDLE TIME" -replace "LOGON,TIME","LOGON TIME" | ConvertFrom-Csv -Delimiter "," | foreach {
+		logoff ($_.ID)
+	}
+}
+
+Function Enable-O365AuditLog {
+<#
+	.DESCRIPTION
+		Sets auditig on all mailboxes in the organization as well as sets the default setting.
+
+	.LINK
+		https://docs.microsoft.com/en-us/microsoft-365/compliance/enable-mailbox-auditing
+
+	.LINK
+		https://support.microsoft.com/en-us/help/4026501/office-auditing-in-office-365-for-admins
+#>
+	If (Get-Command Get-Mailbox -ErrorAction SilentlyContinue){
+		Write-Host "Enabling Auditing for all existing mailboxes"
+		Get-Mailbox -ResultSize Unlimited -Filter{RecipientTypeDetails -eq "UserMailbox"} | Set-Mailbox -AuditEnabled $true -Verbose
+		Write-Host "Enabling Auditing for the organization as a whole"
+		Set-OrganizationConfig -AuditDisabled $False
+		Write-Host "Checking the orginazation config. If auditing is enabled, this setting should show as 'False'"
+		Get-OrganizationConfig | Format-List AuditDisabled
+	} Else {
+		Write-Host "You are not connected to an exchange server. Try the command 'Connect-O365'"
+	}
+}
+
+Function Enable-Sleep {
+	If ($(powercfg -requests) -like "*powershell.exe*") {
+		Write-Host "Resuming power management plane"
+		$ste::SetThreadExecutionState($ES_CONTINUOUS)
+	} Else {
+		Write-Host "Disable-Sleep wasn't running. Did you run 'Disable-Sleep'?"
+	}
+}
+
+Function Enable-SSL {
+	Write-Host "Enabling SSL"
+	[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+}
+
+Function Expand-Terminal {
+	mode con: cols=160 lines=120
+}
+
+Function Get-ADUserPassExpirations {
+    <#
+	.DESCRIPTION
+		Retrieves a list of (enabled) Active Directory Users and shows their password expiration times.
+	#>
+
+	# check the name of the parent process.  If it's LogMeIn, we can't use the Out-GridView UI
+	$parentProcessName = (Get-Process -Id ((Get-WmiObject Win32_Process -Filter "processid='$PID'").ParentProcessId)).Name
+
+	# check to see whether Get-AdUser is available
+	if (Get-Command ActiveDirectory\Get-AdUser -ErrorAction SilentlyContinue) {
+
+		$adUserInfo = Get-ADUser -Filter {Enabled -eq $True -and PasswordNeverExpires -eq $False} `
+		–Properties "DisplayName", "userPrincipalName", "msDS-UserPasswordExpiryTimeComputed" | `
+		Select-Object -Property "Displayname","userPrincipalName",@{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}}
+
+		# if the parent process of this powershell instance is not explorer.exe, output to PowerShell table.
+		If ($parentProcessName -ne "explorer") {
+			$adUserInfo | Format-Table -AutoSize
+		} else { # otherwise, grid view UI
+			$adUserInfo | Out-GridView -Title "ATG Powershell --> User Password Expirations"
+		}
+
+	} else { # cannot continue, Get-AdUser is not available
+		Write-Host "`n [!] This command must be run on a system with Active Directory Powershell Modules (i.e. a domain controller)`n"
+	}
+}
+
+Function Get-ITFunctions {
+	If (Get-Module -Name ITFunctions -ErrorAction SilentlyContinue){
+		# List imported functions from ITFunctions
+		Write-Host ====================================================
+		Write-Host "The below functions are now loaded and ready to use:"
+		Write-Host ====================================================
+			Get-Command -Module ITFunctions | Format-Wide -Column 3
+		Write-Host ====================================================
+		Write-Host "Type: 'Help <function name> -Detailed' for more info"
+		Write-Host ====================================================
+	} Else {
+	$progressPreference = 'silentlyContinue'
+	iwr tinyurl.com/get-ITFunctions -UseBasicParsing | iex
+	# List imported functions from ITFunctions
+		Write-Host ====================================================
+		Write-Host "The below functions are now loaded and ready to use:"
+		Write-Host ====================================================
+			Get-Command -Module ITFunctions | Format-Wide -Column 3
+		Write-Host ====================================================
+		Write-Host "Type: 'Help <function name> -Detailed' for more info"
+		Write-Host ====================================================
+	}
+}
+
+Function Get-ThunderBolt {
+	$Thunderbolt = Get-WmiObject Win32_SystemDriver | Where-Object -Property DisplayName -Like "*Thunder*"
+	If ($Thunderbolt) {
+		Write-Host "The following ThunderBolt controllers have been detected:"
+		$Thunderbolt
+	} Else {
+		Write-Host "No Thunderbolt Controllers have been detected"
+	}
+}
+
+Function Install-AppDefaults {
+	Write-Host "Downloading App Defaults"
+	New-Item -ItemType Directory -Force -Path C:\IT\PPKG
+	(New-Object System.Net.WebClient).DownloadFile('$ExternalSitesPath/AppDefaults.xml', 'C:\IT\AppDefaults.xml')
+	Write-Host "Deploying App Defaults"
+	Dism.exe /online /import-defaultappassociations:'C:\IT\AppDefaults.xml'
+}
+
+Function Install-Choco {
+	Write-Host "Installing Chocolatey"
+	$progressPreference = 'silentlyContinue'
+	Set-ExecutionPolicy Bypass -Scope Process -Force
+	Enable-SSL
+	Invoke-WebRequest Your choco install script -UseBasicParsing | Invoke-Expression
+}
+
+Function Install-NiniteApps {
+	If (-not (Test-Path 'C:\IT\NinitePro.exe')) {Install-NinitePro}
+	Write-Host "Install Ninite Apps, waiting for install to complete and logging the results."
+		$NiniteCache = \\YourNiniteCache #If you have it on a hosted share
+		If(test-path $NiniteCache){
+			& C:\IT\NinitePro.exe /select 7-Zip Air Chrome 'Firefox ESR' Flash Greenshot 'Notepad++' 'Paint.NET' Reader Silverlight VLC /cachepath $NiniteCache /silent 'C:\IT\NiniteReport.txt' | Wait-Process
+		} ELSE {
+			& C:\IT\NinitePro.exe /select 7-Zip Air Chrome 'Firefox ESR' Flash Greenshot 'Notepad++' 'Paint.NET' Reader Silverlight VLC /nocache /silent 'C:\IT\NiniteReport.txt' | Wait-Process
+		}
+	Write-Host "End of Install Ninite Apps"
+}
+
+Function Install-NinitePro {
+	Write-Host "Downloading Ninite Installer"
+	New-Item -ItemType Directory -Force -Path C:\IT
+	(New-Object System.Net.WebClient).DownloadFile('$ExternalSitesPath/NinitePro.exe', 'C:\IT\NinitePro.exe')
+	Write-Host "Schedule Ninite Updates"
+	$Trigger = New-ScheduledTaskTrigger -AtStartup
+	$User = "NT AUTHORITY\SYSTEM"
+	$Action = New-ScheduledTaskAction -Execute "C:\IT\NinitePro.exe" -Argument "/updateonly /nocache /silent C:\IT\NiniteUpdates.log"
+	Register-ScheduledTask -TaskName "Update Apps" -Trigger $Trigger -User $User -Action $Action -RunLevel Highest -Force
+	Write-Host "End of Schedule Ninite Updates"
+}
+
+Function Install-O2016STD([String] $MSPURL){
+	Write-Host "Downloading MS Office"
+		Enable-SSL
+		New-Item -ItemType Directory -Force -Path 'C:\IT\O2016STD'
+		(New-Object System.Net.WebClient).DownloadFile(<#Bundle up your O2016 installer to a password protected self extracting file and upload it somewhere#>, 'C:\IT\O2016STD\O2016_STD_X64.exe')
+
+	Write-Host "Downloading MS Office config files"
+		$MSPfilename = $MSPURL.Substring($MSPURL.LastIndexOf("/") + 1)
+		$MSPfilepath = 'C:\IT\O2016STD\' + $MSPfilename
+		(New-Object System.Net.WebClient).DownloadFile($MSPURL, $MSPfilepath)
+
+	Write-Host "Installing Office"
+		& 'C:\IT\O2016STD\O2016_STD_X64.exe' -p<#SFXPASSWORD#> -oC:\IT\O2016STD -y | Wait-Process
+		& 'C:\IT\O2016STD\setup.exe' /adminfile $MSPfilepath | Wait-Process
+
+	Write-Host "Placing Shortcuts"
+		$TargetFile = 'C:\Program Files\Microsoft Office\Office16\OUTLOOK.EXE'
+		$ShortcutFile = "$env:Public\Desktop\Outlook.lnk"
+		$WScriptShell = New-Object -ComObject WScript.Shell
+		$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+		$Shortcut.TargetPath = $TargetFile
+		$Shortcut.Save()
+
+		$TargetFile = 'C:\Program Files\Microsoft Office\Office16\EXCEL.EXE'
+		$ShortcutFile = "$env:Public\Desktop\Excel.lnk"
+		$WScriptShell = New-Object -ComObject WScript.Shell
+		$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+		$Shortcut.TargetPath = $TargetFile
+		$Shortcut.Save()
+
+		$TargetFile = 'C:\Program Files\Microsoft Office\Office16\WINWORD.EXE'
+		$ShortcutFile = "$env:Public\Desktop\Word.lnk"
+		$WScriptShell = New-Object -ComObject WScript.Shell
+		$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+		$Shortcut.TargetPath = $TargetFile
+		$Shortcut.Save()
+}
+
+Function Install-O365([String] $SiteCode = "Generic"){
+	<#Download the installer from https://www.microsoft.com/en-us/download/confirmation.aspx?id=49117
+	Extract the Setup.exe and upload it somewhere
+	It helps to keep it up to date
+	https://docs.microsoft.com/en-us/officeupdates/odt-release-history
+	#>
+	$O365Setupexe = #Where did you upload it?
+	Write-Host "Downloading MS Office"
+		Enable-SSL
+		New-Item -ItemType Directory -Force -Path "C:\IT\O365"
+		(New-Object System.Net.WebClient).DownloadFile($O365Setupexe, 'C:\IT\O365\setup.exe')
+	Write-Host "Downloading MS Office config files"
+		$O365ConfigSource = "$ExternalSitesPath" + $SiteCode + "/" + $SiteCode + "_O365_Config.xml"
+		$O365ConfigDest = "C:\IT\O365\" + $SiteCode + "_O365_Config.xml"
+		(New-Object System.Net.WebClient).DownloadFile($O365ConfigSource, $O365ConfigDest)
+	Write-Host "Installing Office"
+		& C:\IT\O365\setup.exe /configure $O365ConfigDest | Wait-Process
+	Write-Host "Placing Shortcuts"
+		If (Test-Path "C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE"){
+			$TargetFile = "C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE"
+		} ELSEIF (Test-Path "C:\Program Files (x86)\Microsoft Office\root\Office16\OUTLOOK.EXE"){
+			$TargetFile = "C:\Program Files (x86)\Microsoft Office\root\Office16\OUTLOOK.EXE"
+		}
+		$ShortcutFile = "$env:Public\Desktop\Outlook.lnk"
+		$WScriptShell = New-Object -ComObject WScript.Shell
+		$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+		$Shortcut.TargetPath = $TargetFile
+		$Shortcut.Save()
+
+		If (Test-Path "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"){
+			$TargetFile = "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE"
+		} ELSEIF (Test-Path "C:\Program Files (x86)\Microsoft Office\root\Office16\EXCEL.EXE"){
+			$TargetFile = "C:\Program Files (x86)\Microsoft Office\root\Office16\EXCEL.EXE"
+		}
+		$ShortcutFile = "$env:Public\Desktop\Excel.lnk"
+		$WScriptShell = New-Object -ComObject WScript.Shell
+		$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+		$Shortcut.TargetPath = $TargetFile
+		$Shortcut.Save()
+
+		If (Test-Path "C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE"){
+			$TargetFile = "C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE"
+		} ELSEIF (Test-Path "C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE"){
+			$TargetFile = "C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE"
+		}
+		$ShortcutFile = "$env:Public\Desktop\Word.lnk"
+		$WScriptShell = New-Object -ComObject WScript.Shell
+		$Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+		$Shortcut.TargetPath = $TargetFile
+		$Shortcut.Save()
+}
+
+Function Invoke-Win10Decrap {
+	Write-Host "Windows 10 Decrapifier"
+	#Based on https://community.spiceworks.com/scripts/show/4378-windows-10-decrapifier-18xx-19xx-2xxx
+	$progressPreference = 'silentlyContinue'
+	Set-ExecutionPolicy Bypass -Scope Process -Force
+	Enable-SSL
+	Invoke-WebRequest https://raw.githubusercontent.com/AmbitionsTechnologyGroup/ATG-PS-Functions/master/Scripts/Win-10-DeCrapifier/Windows10Decrapifier.txt -UseBasicParsing | Invoke-Expression
+}
+
+Function Join-Domain {
+		param
+	(
+		[Parameter(Mandatory=$true)]
+		[string]$Domain,
+		[Parameter(Mandatory=$true)]
+		[string]$Username,
+		[Parameter(Mandatory=$true)]
+		$Password
+	)
+	Write-Host "Join Domain"
+	$Password = $Password | ConvertTo-SecureString -asPlainText -Force
+	$Username = $Domain + "\" + $Username
+	$credential = New-Object System.Management.Automation.PSCredential($Username,$Password)
+	Add-Computer -DomainName $Domain -Credential $credential
+}
+
+Function Remove-PPKGInstallFolder {
+	Write-Host "Cleaning up and Restarting Computer"
+	PowerShell.exe -NoProfile -ExecutionPolicy Bypass -Command "If (Test-Path C:\IT\PPKG){Remove-Item -LiteralPath 'C:\IT\PPKG' -Force -Recurse};Restart-Computer -Force"
+	Stop-transcript
+	Restart-Computer -Force
+}
+
+Function Rename-ClientComputer {
+	Write-Host "Rename Computer"
+		$title = 'Rename Computer'
+		$msg = 'Enter the client shortcode (e.g. AAIHB) or Dept code'
+		$SerialNumber = (Get-WmiObject win32_bios).SerialNumber
+		#Message box prompts onscreen for input
+		[void][Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic')
+		$ClientCode = [Microsoft.VisualBasic.Interaction]::InputBox($msg, $title)
+		Rename-Computer ($ClientCode + "-" + $SerialNumber) -Force
+	Write-Host "End of Rename Computer"
+}
+
+Function Repair-Windows {
+	$StartTime = (Get-Date)
+	(Get-Date).DateTime | Out-Host
+	Write-Host Repair-Volume -DriveLetter $Env:SystemDrive.SubString(0,1) -Scan
+	$chdksk = Repair-Volume -DriveLetter $Env:SystemDrive.SubString(0,1) -Scan
+	If ($chdksk -ne "NoErrorsFound") {Repair-Volume -DriveLetter $Env:SystemDrive.SubString(0,1) -SpotFix}
+	Write-Host Dism /Online /Cleanup-Image /StartComponentCleanup
+	Dism /Online /Cleanup-Image /StartComponentCleanup
+	Write-Host ...
+	(Get-Date).DateTime | Out-Host
+	Write-Host Dism /Online /Cleanup-Image /RestoreHealth
+	Dism /Online /Cleanup-Image /RestoreHealth
+	Write-Host ...
+	(Get-Date).DateTime | Out-Host
+	Write-Host SFC /scannow
+	SFC /scannow
+	(Get-Date).DateTime | Out-Host
+	$EndTime = (Get-Date) - $StartTime
+	Write-Host "This process took:"
+	$EndTime | FT | Out-Host
+	Write-Host "Run this function repeately until no errors show up. If this fails after 3 tries, upgrade or reinstall windows"
+}
+
+Function Restore-LastUser {
+	$RegKey = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+	$RegKeyPS = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+	$RegFile = "C:\IT\LastLoggedOnUser.reg"
+	$InitUser = (Get-ItemProperty $RegKeyPS).LastLoggedOnUser
+
+	If (Test-Path -Path $RegFile){
+		$User = (Select-String -Path $RegFile -Pattern '"LastLoggedOnUser"' -SimpleMatch).Line
+		Write-Host "Restoring:`n$User"
+		REG IMPORT $RegFile
+		$NewUser = (Get-ItemProperty $RegKeyPS).LastLoggedOnUser
+		Write-Host "Last Logged On User has been restored from $InitUser to $NewUser"
+		Write-Host "Refreshing the Logon Screen."
+		Get-Process -Name LogonUI -ErrorAction SilentlyContinue | Stop-Process -Force
+	} Else {
+		Write-Host "Error: No backup exists. Try the command Backup-LastUser to create a backup."
+	}
+}
+
+Function Set-AutoLogon ([String] $SiteCode) {
+	Write-Host "Set autologon"
+		#Registry path declaration
+		$RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+		[String]$DefaultUsername = 'WCCC2'
+		[String]$DefaultPassword = 'Passw0rd'
+		#setting registry values
+		Set-ItemProperty $RegPath "AutoAdminLogon" -Value "1" -type String
+		Set-ItemProperty $RegPath "DefaultUsername" -Value $DefaultUsername -type String
+		Set-ItemProperty $RegPath "DefaultPassword" -Value $DefaultPassword -type String
+		Set-ItemProperty $RegPath "AutoLogonCount" -Value "1" -type DWord
+	Write-Host "End of Set autologon"
+}
+
+Function Set-DailyReboot {
+	Write-Host "Schedule Daily Restart"
+		$Action = New-ScheduledTaskAction -Execute 'shutdown.exe' -Argument '-f -r -t 0'
+		$Trigger =New-ScheduledTaskTrigger -Daily -At 3am
+		$Idle = New-ScheduledTaskSettingsSet -RunOnlyIfIdle -IdleDuration 00:30:00 -IdleWaitTimeout 02:00:00
+		$User = "NT AUTHORITY\SYSTEM"
+		Register-ScheduledTask -Action $action -Trigger $trigger -User $User -Settings $Idle -TaskName "Daily Restart" -Description "Daily restart"
+}
+
+Function Set-EastTime {
+	Write-Host "Setting local time zone to Eastern Time"
+	Set-TimeZone -Name "Eastern Standard Time"
+	net start W32Time
+	W32tm /resync /force
+}
+
+Function Set-NumLock {
+	Write-Host "Setting Numlock on keyboard as default"
+	Set-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Keyboard' -Name "InitialKeyboardIndicators" -Value "2" -Force -PassThru
+}
+
+Function Set-RunOnceScript {
+	param
+	(
+		[string]$Label,
+		[string]$Script
+	)
+
+	$RunOnceValue = 'PowerShell.exe -ExecutionPolicy Bypass -File "' + $Script + '"'
+	Write-Host "Install After Reboot"
+	Set-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name $Label -Value $RunOnceValue
+}
+
+Function Start-PPKGLog ([String] $LogLabel) {
+	Write-Host "Making a log file for debugging"
+		$LogPath = "C:\IT\" + $SiteCode + "-" + $LogLabel + ".log"
+		Start-Transcript -path $LogPath -Force -Append
+}
+
+Function Update-DellPackages {
+	Write-Host "Dell Updates"
+		$Manufact = (Get-CimInstance -Class Win32_ComputerSystem).Manufacturer
+		if( $Manufact -like "*Dell*")
+		{
+			Enable-SSL
+			Set-ExecutionPolicy Bypass -Scope Process -Force; Invoke-WebRequest https://raw.githubusercontent.com/AmbitionsTechnologyGroup/ATG-PS-Functions/master/Scripts/Dell-Command-Update/DCU_AUTO.txt -UseBasicParsing | Invoke-Expression
+		} else { Write-Host This is not a Dell Computer}
+	Write-Host "End of Dell Updates"
+}
+
+Function Update-Edge {
+	Write-Host "Updating Microsoft Edge"
+	If (!(Get-Command choco -ErrorAction SilentlyContinue)) {Install-Choco}
+	If (Get-Process MicrosoftEdge -ErrorAction SilentlyContinue) {Get-Process MicrosoftEdge | Stop-Process -Force}
+	Choco upgrade microsoft-edge -y
+}
+
+Function Update-NiniteApps {
+	<#
+	.DESCRIPTION
+		Uses NinitePro to immediately update all applications it is cabable of updating. The log will be at C:\IT\NiniteReport.txt
+	#>
+    If (-not (Test-Path 'C:\IT\NinitePro.exe')) {Install-NinitePro}
+    Write-Host "Install Ninite Apps, waiting for install to complete and logging the results."
+        $NiniteCache = \\YourNiniteCache #If you have it on a hosted share
+        If(test-path $NiniteCache){
+            & C:\IT\NinitePro.exe /select 7-Zip Air Chrome 'Firefox ESR' Flash Greenshot 'Notepad++' 'Paint.NET' Reader Silverlight VLC /cachepath $NiniteCache /silent 'C:\IT\NiniteReport.txt' | Wait-Process
+        } ELSE {
+            & C:\IT\NinitePro.exe /updateonly /nocache /silent 'C:\IT\NiniteReport.txt' | Wait-Process
+        }
+    Write-Host "End of Install Ninite Apps"
+}
+
+Function Update-O365Apps {
+	$global:O365CurrentCdn = ""
+	If (-not (Test-Path 'C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeC2RClient.exe')) {
+		Write-Host "Office 365 Click2Run is not installed. This script does not apply."
+	} Else {
+		$Apps = @('Excel','Outlook','WinWord','PowerPoint','MsAccess','MSPub','OneNote')
+		$OpenApps = @('')
+		$Apps | ForEach-Object {
+			If (Get-Process $_ -ErrorAction SilentlyContinue) {
+				$OpenApps = $OpenApps += $_
+			}
+		}
+
+		If ($OpenApps) {
+			Write-Host "Aborting update, the following Office Apps are open:"
+			$OpenApps | FL | Out-String
+			Write-Host "Please close these programs and try again."
+			} Else {
+			Function Get-Office365Version {
+				$O365CurrentVer = ""
+				$O365CurrentCdn = ""
+				$O365CurrentPol = ""
+				$O365CurrentVer = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -ErrorAction SilentlyContinue).VersionToReport
+				$O365CurrentCdn = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -ErrorAction SilentlyContinue).CDNBaseUrl
+				$O365CurrentPol = (Get-ItemProperty -Path "HKLM:\SOFTWARE\policies\microsoft\office\16.0\common\officeupdate" -ErrorAction SilentlyContinue).updatebranch
+				if ($O365CurrentVer.Length -eq 0) {
+					Write-Host "Office 365 (C2R) is not installed on this PC."
+				} else {
+					Write-Host "Office 365 (C2R) Current Version: "$O365CurrentVer
+					switch ($O365CurrentCdn) {
+						"http://officecdn.microsoft.com/pr/492350f6-3a01-4f97-b9c0-c7c6ddf67d60" {$O365CurrentCdn = "Monthly Channel"}
+						"http://officecdn.microsoft.com/pr/7ffbc6bf-bc32-4f92-8982-f9dd17fd3114" {$O365CurrentCdn = "Semi-Annual Channel"}
+						"http://officecdn.microsoft.com/pr/b8f9b850-328d-4355-9145-c59439a0c4cf" {$O365CurrentCdn = "Semi-Annual Channel (Targeted)"}
+					}
+					Write-Host "Office 365 Update Channel (Local Setting): "$O365CurrentCdn
+					if ($O365CurrentPol.length -eq 0) {
+						$O365CurrentPol = "None"
+					} else {
+						switch ($O365CurrentPol) {
+							"Current" {$O365CurrentPol = "Monthly Channel"}
+							"Deferred" {$O365CurrentPol = "Semi-Annual Channel"}
+							"FirstReleaseDeferred" {$O365CurrentPol = "Semi-Annual Channel (Targeted)l"}
+						}
+					}
+					Write-Host "Office 365 Update Channel (Policy Setting): "$O365CurrentPol
+					Write-Host "`n"
+				}
+			}
+
+			Function Wait-UpdateStop {
+				param
+				(
+					[Parameter(Mandatory=$False)]
+					[string]$Process
+				)
+
+				Function Get-SpecificProcess {
+					Get-Process OfficeClickToRun -ErrorAction SilentlyContinue | Where-Object -Property Path -Like "*Microsoft Shared\ClickToRun\Updates\*"
+				}
+
+				$Timeout = 190 ## seconds
+				Try {
+					$timer = [Diagnostics.Stopwatch]::StartNew()
+					while (($timer.Elapsed.TotalSeconds -lt $Timeout) -and (-not (Get-SpecificProcess))) {
+						Start-Sleep -Seconds 2
+						$totalSecs = [math]::Round($timer.Elapsed.TotalSeconds, 0)
+						Write-Verbose -Message "Still waiting for action to complete after [$totalSecs] seconds..."
+					}
+					$timer.Stop()
+					if ($timer.Elapsed.TotalSeconds -gt $Timeout) {
+						Write-Host "Office update either failed or is already up to date"
+					} else {
+						Do {
+							If (!(Get-SpecificProcess)) {
+								   Write-Host "Waiting for $Process to Start"
+								   Start-Sleep -Seconds 2
+							} Else {
+							   Write-Host "$Process has Started"
+							   While (Get-SpecificProcess) {
+										[String]$CPU = (Get-SpecificProcess).CPU
+										If ($CPU.Length -gt 4) {$CPU = $CPU.substring(0,4)}
+										Write-Host -NoNewLine "`rWaiting for $Process to stop. CPU time = $CPU"
+										Start-Sleep -Seconds 5
+							   }
+							   Write-Host "`n`n$Process Stopped" ; $Status = 'Done'
+							}
+						} Until ($Status)
+					}
+				} Catch {
+					Write-Error -Message $_.Exception.Message
+				}
+			}
+
+			Get-Office365Version
+
+			If (!($O365CurrentCdn -like "*monthlty*")) {
+				Write-Host "Setting update channel to monthly"
+				& "C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeC2RClient.exe" /changesetting Channel=Current
+			}
+
+			Write-Host "Updating Office, please wait 120 seconds to see further progress."
+				& "C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeC2RClient.exe" /update user updatepromptuser=false forceappshutdown=true displaylevel=false
+				Restart-Service -Name "ClickToRunSvc" -Force -ErrorAction SilentlyContinue
+				Wait-UpdateStop OfficeClickToRun
+
+				Write-Host "`n"
+
+			Get-Office365Version
+		}
+	}
+}
+
+Function Update-PWSH {
+	Write-Host "Updating PWSH"
+	If (!(Get-Command choco -ErrorAction SilentlyContinue)) {Install-Choco}
+	Choco upgrade pwsh -y
+}
+
+Function Update-Windows {
+	Write-Host "Install Windows Updates"
+		Set-ExecutionPolicy Bypass -Scope Process -Force
+		Enable-SSL
+		Invoke-WebRequest https://raw.githubusercontent.com/AmbitionsTechnologyGroup/ATG-PS-Functions/master/Scripts/Windows-Update/UpdateWindows.txt -UseBasicParsing | Invoke-Expression
+	Write-Host "End of Install Windows Updates"
+}
+
+Function Update-WindowsApps {
+	Write-Host "Updating Windows Apps"
+		Start-Process ms-windows-store:
+		Start-Sleep -Seconds 5
+		(Get-WmiObject -Namespace "root\cimv2\mdm\dmmap" -Class "MDM_EnterpriseModernAppManagement_AppManagement01").UpdateScanMethod()
+	Write-Host "Update Windows Apps initiated"
+}
+
+Function Update-WindowTitle ([String] $PassNumber) {
+	Write-Host "Changing window title"
+		$host.ui.RawUI.WindowTitle = "$SiteCode Provisioning | $env:computername | Pass $PassNumber | Please Wait"
+}
+
+If (Get-Module -Name ITFunctions -ErrorAction SilentlyContinue){
+	# List imported functions from ITFunctions
+	Write-Host `n====================================================
+	Write-Host "The below functions are now loaded and ready to use:"
+	Write-Host ====================================================
+
+	Get-Command -Module ITFunctions | Format-Wide -Column 3
+
+	Write-Host ====================================================
+	Write-Host "Type: 'Help <function name> -Detailed' for more info"
+	Write-Host ====================================================
+}
