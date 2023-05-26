@@ -312,7 +312,7 @@ Function Get-ITFunctions {
 		Write-Host ====================================================
 	} Else {
 	$progressPreference = 'silentlyContinue'
-	iwr tinyurl.com/get-ITFunctions -UseBasicParsing | iex
+	iwr https://raw.githubusercontent.com/xollio/PublicFunctions/main/PublicFunctions.txt -UseBasicParsing | iex
 	# List imported functions from ITFunctions
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
@@ -347,7 +347,7 @@ Function Install-Choco {
 	$progressPreference = 'silentlyContinue'
 	Set-ExecutionPolicy Bypass -Scope Process -Force
 	Enable-SSL
-	Invoke-WebRequest Your choco install script -UseBasicParsing | Invoke-Expression
+	Invoke-WebRequest ftp://10.31.1.37/WCCC/WChoco/chocolatey.1.4.0.nupkg -UseBasicParsing | Invoke-Expression
 }
 
 Function Install-NiniteApps {
