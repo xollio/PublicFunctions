@@ -314,7 +314,7 @@ Function Get-WCCCFunctions {
 	} Else {
 	$progressPreference = 'silentlyContinue'
 	Enable-SSL
-	Invoke-WebRequest https://raw.githubusercontent.com/xollio/PublicFunctions/main/PublicFunctions.txt -UseBasicParsing | Invoke-Expression
+	Invoke-WebRequest ftp://10.31.1.37/WCCCFunctionLoader.txt -UseBasicParsing | Invoke-Expression
 	# List imported functions from WCCCFunctions
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
