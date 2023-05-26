@@ -300,7 +300,7 @@ Function Get-ADUserPassExpirations {
 	}
 }
 
-Function Get-ITFunctions {
+Function Get-WCCCFunctions {
 	If (Get-Module -Name WCCCFunctions -ErrorAction SilentlyContinue){
 		# List imported functions from WCCCFunctions
 		Write-Host ====================================================
