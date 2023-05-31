@@ -359,8 +359,8 @@ Function Install-NiniteApps {
 Function Rename-ClientComputer {
 	Write-Host "Rename Computer"
 		$title = 'Rename Computer'
-		$msg = 'Enter the Hall Name. (EX: "XXX"-2401) 
-		$msg1 = 'Enter the New Computer Name. (EX: 402-24"XX") 
+		$msg = 'What Hallway? EX: XXX2401'
+		$msg1 = 'Number EX: 402-24XX'
 		#Message box prompts onscreen for input
 		[void][Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic')
 		$ClientCode = [Microsoft.VisualBasic.Interaction]::InputBox($msg, $msg1)
