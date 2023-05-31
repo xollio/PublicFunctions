@@ -356,6 +356,18 @@ Function Install-NiniteApps {
 	Write-Host "End of Install Ninite Apps"
 }
 
+Function Rename-ClientComputer {
+	Write-Host "Rename Computer"
+		$title = 'Rename Computer'
+		$msg = 'Enter the Hall Name. (EX: "XXX"-2401) 
+		$msg1 = 'Enter the New Computer Name. (EX: 402-24"XX") 
+		#Message box prompts onscreen for input
+		[void][Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic')
+		$ClientCode = [Microsoft.VisualBasic.Interaction]::InputBox($msg, $msg1)
+		Rename-Computer ($msg + "-24" + $msg1) -Force
+	Write-Host "End of Rename Computer"
+}
+
 Function Install-NinitePro {
 	Write-Host "Downloading Ninite Installer"
 	New-Item -ItemType Directory -Force -Path C:\IT
@@ -375,13 +387,13 @@ Function Install-O365([String] $SiteCode = "Generic"){
 	It helps to keep it up to date
 	https://docs.microsoft.com/en-us/officeupdates/odt-release-history
 	#>
-	$O365Setupexe = (iwr ftp://10.31.1.37\WCCCOffice\setup.exe).Content | iex 
+	$O365Setupexe = ftp://10.31.1.37\WCCCOffice\setup.exe 
 	Write-Host "Downloading MS Office"
 		Enable-SSL
 		New-Item -ItemType Directory -Force -Path "C:\IT\O365"
 		(New-Object System.Net.WebClient).DownloadFile($O365Setupexe, 'C:\IT\O365\setup.exe')
 	Write-Host "Downloading MS Office config files"
-		$O365ConfigSource = "$ExternalSitesPath" + $SiteCode + "/" + $SiteCode + "_O365_Config.xml"
+		$O365ConfigSource = "hsmsoff23.xml"
 		$O365ConfigDest = "C:\IT\O365\" + $SiteCode + "_O365_Config.xml"
 		(New-Object System.Net.WebClient).DownloadFile($O365ConfigSource, $O365ConfigDest)
 	Write-Host "Installing Office"
@@ -427,7 +439,7 @@ Function Invoke-Win10Decrap {
 	$progressPreference = 'silentlyContinue'
 	Set-ExecutionPolicy Bypass -Scope Process -Force
 	Enable-SSL
-	Invoke-WebRequest https://raw.githubusercontent.com/AmbitionsTechnologyGroup/ATG-PS-Functions/master/Scripts/Win-10-DeCrapifier/Windows10Decrapifier.txt -UseBasicParsing | Invoke-Expression
+	Invoke-WebRequest https://raw.githubusercontent.com/AmbitionsTechnologyGroup/ATG-PS-Functions/master/Scripts/Win-10-DeCrapifier/Windows10Decrapifier.txt -UseBasicParsing | 	    Invoke-Expression
 }
 
 Function Join-Domain {
@@ -454,17 +466,6 @@ Function Remove-PPKGInstallFolder {
 	Restart-Computer -Force
 }
 
-Function Rename-ClientComputer {
-	Write-Host "Rename Computer"
-		$title = 'Rename Computer'
-		$msg = 'Enter the client shortcode (e.g. AAIHB) or Dept code'
-		$SerialNumber = (Get-WmiObject win32_bios).SerialNumber
-		#Message box prompts onscreen for input
-		[void][Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic')
-		$ClientCode = [Microsoft.VisualBasic.Interaction]::InputBox($msg, $title)
-		Rename-Computer ($ClientCode + "-" + $SerialNumber) -Force
-	Write-Host "End of Rename Computer"
-}
 
 Function Repair-Windows {
 	$StartTime = (Get-Date)
@@ -757,3 +758,15 @@ If (Get-Module -Name WCCCFunctions -ErrorAction SilentlyContinue){
 	Write-Host "Type: 'Help WCCCFunctions -Detailed' for more info"
 	Write-Host ====================================================
 }
+
+Function Update-WindowsTwo {
+	Install-Module -Name PSWindowsUpdate -Force
+	Set-ExecutionPolicy -ExecutionPolicy RemoteSigned
+	Import-Module PSWindowsUpdate
+	Install-WindowsUpdate -AcceptAll -AutoReboot
+
+}
+
+
+
+
