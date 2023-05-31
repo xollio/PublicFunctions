@@ -760,11 +760,11 @@ If (Get-Module -Name WCCCFunctions -ErrorAction SilentlyContinue){
 }
 
 Function Update-WindowsTwo {
-	Install-Module -Name PSWindowsUpdate -Force
-	Set-ExecutionPolicy -ExecutionPolicy RemoteSigned
-	Import-Module PSWindowsUpdate
-	Install-WindowsUpdate -AcceptAll -AutoReboot
-
+	Set-ExecutionPolicy Bypass -Scope Process -Force
+	Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+	Install-Module PSWindowsUpdate
+	Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot
+	Write-Host "Dont Forget to Restart the computer!"
 }
 
 
