@@ -314,7 +314,7 @@ Function Get-WCCCFunctions {
 	} Else {
 	$progressPreference = 'silentlyContinue'
 	Enable-SSL
-	Invoke-WebRequest ftp://10.31.1.37/WCCCFunctionLoader.txt -UseBasicParsing | Invoke-Expression
+	Invoke-WebRequest ftp://10.31.1.37/WCCCFunctionLoader.psm1 -UseBasicParsing | Invoke-Expression
 	# List imported functions from WCCCFunctions
 		Write-Host ====================================================
 		Write-Host "The below functions are now loaded and ready to use:"
@@ -440,6 +440,14 @@ Function Invoke-Win10Decrap {
 	Set-ExecutionPolicy Bypass -Scope Process -Force
 	Enable-SSL
 	Invoke-WebRequest https://raw.githubusercontent.com/AmbitionsTechnologyGroup/ATG-PS-Functions/master/Scripts/Win-10-DeCrapifier/Windows10Decrapifier.txt -UseBasicParsing | 	    Invoke-Expression
+}
+
+Function Update-WindowsTwo {
+	Set-ExecutionPolicy Bypass -Scope Process -Force
+	Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+	Install-Module PSWindowsUpdate
+	Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot
+	Write-Host "Dont Forget to Restart the computer!"
 }
 
 Function Join-Domain {
@@ -758,15 +766,4 @@ If (Get-Module -Name WCCCFunctions -ErrorAction SilentlyContinue){
 	Write-Host "Type: 'Help WCCCFunctions -Detailed' for more info"
 	Write-Host ====================================================
 }
-
-Function Update-WindowsTwo {
-	Set-ExecutionPolicy Bypass -Scope Process -Force
-	Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
-	Install-Module PSWindowsUpdate
-	Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot
-	Write-Host "Dont Forget to Restart the computer!"
-}
-
-
-
 
