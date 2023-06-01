@@ -159,7 +159,7 @@ Function Connect-Wifi {
 
 Function Disable-LocalAdminExpiration {
 	Write-Host "Set local account to never expire"
-		Set-LocalUser -Name "WCCC2" -PasswordNeverExpires $True
+		Set-LocalUser -Name "WCCC" -PasswordNeverExpires $True
 }
 
 Function Disable-FastStartup {
@@ -521,7 +521,7 @@ Function Set-AutoLogon ([String] $SiteCode) {
 	Write-Host "Set autologon"
 		#Registry path declaration
 		$RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
-		[String]$DefaultUsername = 'WCCC2'
+		[String]$DefaultUsername = 'WCCC'
 		[String]$DefaultPassword = 'Passw0rd'
 		#setting registry values
 		Set-ItemProperty $RegPath "AutoAdminLogon" -Value "1" -type String
